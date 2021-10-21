@@ -2,33 +2,44 @@
 //  ViewController.swift
 //  Realm-Backup-Sample
 //
-//  Created by 大西玲音 on 2021/10/21.
+//  Created by 大西 玲音 on 2021/10/21.
 //
 
 import UIKit
-import RealmSwift
 
-class ViewController: UIViewController {
+final class ViewController: UIViewController {
     
-    @IBOutlet weak var tableView: UITableView!
+    @IBOutlet private weak var tableView: UITableView!
     
     private let userUseCase = UserUseCase()
-    private var users: Results<RealmUser> { userUseCase.users }
+    private var users: [User] { userUseCase.users }
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        tableView.delegate = self
-        tableView.dataSource = self
-        tableView.register(CustomTableViewCell.nib,
-                           forCellReuseIdentifier: CustomTableViewCell.identifier)
+        setupTableView()
         
     }
     
-    @IBAction func backup(_ sender: Any) {
+}
+
+// MARK: - func
+private extension ViewController {
+    
+    func createFileName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-hh-mm-ss"
         let fileName = "TaskR_backup_file_" + formatter.string(from: Date()) + ".txt"
+        return fileName
+    }
+    
+}
+
+// MARK: - IBAction func
+private extension ViewController {
+    
+    @IBAction func backup(_ sender: Any) {
+        let fileName = createFileName()
         let documentURL = try! FileManager.default.url(for: .documentDirectory,
                                                           in: .userDomainMask,
                                                           appropriateFor: nil,
@@ -57,50 +68,36 @@ class ViewController: UIViewController {
         userUseCase.createUser(name: "reon\(userUseCase.users.count)")
         tableView.reloadData()
     }
+    
 }
 
+// MARK: - UIDocumentPickerDelegate
 extension ViewController: UIDocumentPickerDelegate {
     
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        if let url = urls.first {
-            guard let realmFileURL = Realm.Configuration.defaultConfiguration.fileURL else {
-                print("DEBUG_PRINT: ", NSError(domain: "Realmのファイルパスが取得できませんでした。", code: -1, userInfo: nil))
-                return
+        guard let url = urls.first else { return }
+        let sourceURLPathString = url.path
+        let destinationURLPathString = url.deletingPathExtension().path
+        let sourceURL = URL(fileURLWithPath: sourceURLPathString)
+        let destinationURL = URL(fileURLWithPath: destinationURLPathString)
+        do {
+            if !FileManager.default.fileExists(atPath: destinationURLPathString) {
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
             }
-            let urlString = url.path.replacingOccurrences(of: ".txt", with: "")
-            let sourceURLString = url.path
-            let destinationString = NSString(
-                string: NSString(
-                    string: sourceURLString
-                ).deletingLastPathComponent
-            ).appendingPathComponent(
-                NSString(
-                    string: urlString
-                ).lastPathComponent
-            )
-            do {
-                // file:// をつけるためにfileURLWithPathでstring->URL
-                if !FileManager.default.fileExists(atPath: destinationString) {
-                    try FileManager.default.copyItem(at: URL(fileURLWithPath: sourceURLString),
-                                                     to: URL(fileURLWithPath: destinationString))
-                }
-                try FileManager.default.removeItem(at: realmFileURL)
-                try FileManager.default.copyItem(at: URL(fileURLWithPath: destinationString),
-                                                 to: realmFileURL)
-                let configuration = Realm.Configuration(fileURL: URL(fileURLWithPath: destinationString))
-                Realm.Configuration.defaultConfiguration = configuration
-                let realm = try! Realm(configuration: configuration)
-                userUseCase.updateRealm(realm: realm)
-            } catch {
-                print("DEBUG_PRINT: ", error.localizedDescription)
-            }
-            tableView.reloadData()
+            guard let realmFileURL = userUseCase.getRealmFileURL() else { return }
+            try FileManager.default.removeItem(at: realmFileURL)
+            try FileManager.default.copyItem(at: destinationURL, to: realmFileURL)
+            userUseCase.updateRealm(fileURL: destinationURL)
+        } catch {
+            print("DEBUG_PRINT: ", error.localizedDescription)
         }
+        tableView.reloadData()
     }
     
 }
 
+// MARK: - UITableViewDelegate
 extension ViewController: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView,
@@ -110,11 +107,12 @@ extension ViewController: UITableViewDelegate {
     
 }
 
+// MARK: - UITableViewDataSource
 extension ViewController: UITableViewDataSource {
     
     func tableView(_ tableView: UITableView,
                    numberOfRowsInSection section: Int) -> Int {
-        users.count
+        return users.count
     }
     
     func tableView(_ tableView: UITableView,
@@ -133,3 +131,14 @@ extension ViewController: UITableViewDataSource {
     
 }
 
+// MARK: - setup
+private extension ViewController {
+    
+    func setupTableView() {
+        tableView.delegate = self
+        tableView.dataSource = self
+        tableView.register(CustomTableViewCell.nib,
+                           forCellReuseIdentifier: CustomTableViewCell.identifier)
+    }
+    
+}

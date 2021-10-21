@@ -7,6 +7,10 @@
 
 import RealmSwift
 
-class RealmUser: Object {
+struct User {
+    let name: String
+}
+
+final class RealmUser: Object {
     @objc dynamic var name: String = ""
 }
